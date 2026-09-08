@@ -43,7 +43,7 @@ test: &test
 jobs:
   lint:
     docker:
-      - image: node:14-alpine
+      - image: node:24-alpine
     steps:
       - checkout
       - run:
@@ -54,21 +54,21 @@ jobs:
           name: Run ESLint
           command: make lint
 
-  node16:
+  node20:
     docker:
-      - image: node:16-alpine
+      - image: node:20-alpine
       - *rabbitmq
     <<: *test
 
-  node18:
+  node22:
     docker:
-      - image: node:18-alpine
+      - image: node:22-alpine
       - *rabbitmq
     <<: *test
 
   coverage:
     docker:
-      - image: node:14-alpine
+      - image: node:24-alpine
       - *rabbitmq
     steps:
       - checkout
@@ -103,10 +103,10 @@ workflows:
   build:
     jobs:
       - lint
-      - node16:
+      - node20:
           requires:
             - lint
-      - node18:
+      - node22:
           requires:
             - lint
       - coverage:
