@@ -52,6 +52,39 @@ const client = new Client(BROKER_URL, {
 });
 ```
 
+## Options
+
+All options are optional, and by default every message is logged at `info` with all details, as in earlier versions.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `log` | `logger[level](struct, msg)` | The logging function, `(level, struct, msg)` |
+| `logger` | the client's logger | Logger used when `log` is not given |
+| `body` | `{ enabled: false, maxBytes: 1000 }` | Log the message content, if it is at most `maxBytes` |
+| `level` | `'info'` | Level messages are logged at: one level, or `{ publish, consume }` |
+| `include` | everything | Leave parts out of the logged struct, see below |
+| `filter` | none | Called with each message; return `false` to skip logging it |
+
+Every message logged carries the connection (protocol, addresses and broker product), the `options` it was published or consumed with, the delivery `fields` (consumed messages) and the message `properties`. Logging is billed by volume in many setups, so each can be left out with `include`:
+
+```js
+new Logging({
+    log,
+    level: { publish: 'info', consume: 'debug' },
+    include: {
+        connection: false, // protocol, addresses and broker product of the connection
+        options: false,
+        fields: false,
+        properties: ['correlationId', 'replyTo'] // or false, or true (default) for all of them
+    },
+    // for example, leave the replies of RPC calls out: the request is logged and
+    // its correlation id is enough to follow it
+    filter: ({ queue, routingKey }) => !String(queue || routingKey).startsWith('amq.gen-')
+});
+```
+
+`filter` only decides whether to log. If it throws, the message is logged anyway, with a warning. Individual calls can also be left out with the `silent` option of hato.
+
 ## Running Tests
 
 Make sure you have a message broker running. The tests expect [RabbitMQ](https://www.rabbitmq.com/).
