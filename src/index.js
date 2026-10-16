@@ -15,6 +15,45 @@ module.exports = class extends plugins.Base {
         this.connFields = {};
     }
 
+    // Level a message is logged at, per command. `level` is either one level for both,
+    // or `{ publish, consume }`; either defaults to 'info'.
+    levelFor(command) {
+        const { level = 'info' } = this.options;
+        return (typeof level === 'string' ? level : level[command]) || 'info';
+    }
+
+    // Whether a part of the logged struct is wanted. Everything is included by default.
+    includes(part) {
+        const { include = {} } = this.options;
+        return include[part] !== false;
+    }
+
+    // Applies the `include.properties` choice: `false` drops them, a list of names keeps only those
+    selectProperties(properties) {
+        const { include = {} } = this.options;
+        if (!Array.isArray(include.properties)) {
+            return this.includes('properties') ? properties : undefined;
+        }
+        const selected = {};
+        for (const key of include.properties) {
+            if (properties && key in properties) selected[key] = properties[key];
+        }
+        return selected;
+    }
+
+    // Asks the user supplied `filter` whether a message is to be logged. It only decides; if it
+    // throws, the message is logged anyway rather than lost.
+    wanted(entry) {
+        const { filter } = this.options;
+        if (typeof filter !== 'function') return true;
+        try {
+            return filter(entry) !== false;
+        } catch (err) {
+            this.log('warn', { err }, '[AMQP:log] Message filter failed.');
+            return true;
+        }
+    }
+
     init() {
         this.logger = this.options.logger || this.logger;
         this.log = this.options.log ||
@@ -57,19 +96,27 @@ module.exports = class extends plugins.Base {
                 const { fields, properties, content } = msg;
                 // Log with the provided function
                 try {
-                    const msg = plugin.getMessage('consume',
-                        fields.exchange, fields.routingKey, content, queue);
-                    plugin.log('info', {
-                        ...plugin.connFields,
+                    if (plugin.wanted({
                         command: 'consume',
                         queue,
-                        options,
                         exchange: fields.exchange,
                         routingKey: fields.routingKey,
-                        fields,
-                        properties,
-                        content: plugin.serializeContent(content)
-                    }, msg);
+                        properties
+                    })) {
+                        const msg = plugin.getMessage('consume',
+                            fields.exchange, fields.routingKey, content, queue);
+                        plugin.log(plugin.levelFor('consume'), {
+                            ...(plugin.includes('connection') && plugin.connFields),
+                            command: 'consume',
+                            queue,
+                            options: plugin.includes('options') ? options : undefined,
+                            exchange: fields.exchange,
+                            routingKey: fields.routingKey,
+                            fields: plugin.includes('fields') ? fields : undefined,
+                            properties: plugin.selectProperties(properties),
+                            content: plugin.serializeContent(content)
+                        }, msg);
+                    }
                 } catch (err) {
                     plugin.log('warn', { err }, '[AMQP:log] Message logging failed.');
                 }
@@ -100,19 +147,21 @@ module.exports = class extends plugins.Base {
         try {
             if (options && options.silent) return;
             const properties = Args.publish(exchange, routingKey, options);
+            const logged = {
+                ...properties,
+                headers: Object.getPrototypeOf(properties.headers)
+            };
+            if (!this.wanted({ command: 'publish', exchange, routingKey, properties: logged })) return;
             const msg = this.getMessage(
                 'publish', exchange, routingKey, content);
-            this.log('info', {
-                ...this.connFields,
+            this.log(this.levelFor('publish'), {
+                ...(this.includes('connection') && this.connFields),
                 err,
                 command: 'publish',
-                options,
+                options: this.includes('options') ? options : undefined,
                 exchange,
                 routingKey,
-                properties: {
-                    ...properties,
-                    headers: Object.getPrototypeOf(properties.headers)
-                },
+                properties: this.selectProperties(logged),
                 content: this.serializeContent(content)
             }, msg);
         } catch (err) {
