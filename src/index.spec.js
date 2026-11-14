@@ -138,3 +138,23 @@ describe('log plugin', () => {
         });
     });
 });
+
+// No broker needed: what the plugin does with the null that amqplib passes when the broker cancels a consumer
+describe('log plugin, consumer cancelled by the broker', () => {
+    it('it should pass on the null without logging or throwing', () => {
+        const logged = [];
+        const plugin = new Log({ log: (level, data) => logged.push(data) });
+
+        let handler;
+        const consume = (queue, fn) => {
+            handler = fn;
+            return Promise.resolve();
+        };
+        const received = [];
+        plugin.onConsume()(consume)('a.queue', (msg) => received.push(msg), {});
+
+        assert.doesNotThrow(() => handler(null));
+        assert.deepStrictEqual(received, [null]);
+        assert.deepStrictEqual(logged, []);
+    });
+});

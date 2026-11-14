@@ -93,6 +93,9 @@ module.exports = class extends plugins.Base {
         return (consume) => (queue, fn, options) => {
             if (options && options.silent) return consume(queue, fn, options);
             const handler = function(msg) {
+                // null: the broker cancelled the consumer (amqplib calls it back with null). There is
+                // nothing to log, and destructuring it threw inside amqplib and closed the connection.
+                if (!msg) return fn(msg);
                 const { fields, properties, content } = msg;
                 // Log with the provided function
                 try {
